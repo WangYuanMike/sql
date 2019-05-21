@@ -3,7 +3,7 @@ SELECT payment_id, customer_id, amount, payment_date
 FROM payment
 WHERE EXTRACT(month FROM payment_date) = 2
 AND customer_id > 589
-ORDER BY 2, 3 DESC;
+ORDER BY 2, 3 DESC; 
 
 -- EXTRACT date and COUNT
 SELECT payment_date::date, COUNT(*)
