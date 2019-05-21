@@ -42,8 +42,38 @@ FROM film f
 GROUP BY 1, 2, 3, 4
 ORDER BY 3 NULLS FIRST;
 
-SELECT inventory_id, COUNT(rental_id) as rentals
-FROM rental
+-- Find a customer's first rental and various attributes about it
+-- correlated query
+SELECT r.customer_id, min(r.rental_id) as first_rental_id,
+(
+	SELECT rental_date FROM rental r2 WHERE r2.rental_id = min(r.rental_id)
+)::date as first_rental_date
+FROM rental r
 GROUP BY 1
-ORDER BY 2 DESC;
+ORDER BY 1;
 
+-- Everything is a table: How many customers purchase from multiple stores?
+SELECT * FROM
+(
+	SELECT t.customer_id, COUNT(*) as number_of_stores FROM
+	(
+		SELECT DISTINCT r.customer_id, s.store_id
+		FROM rental r
+			LEFT JOIN staff s ON r.staff_id = s.staff_id
+		ORDER BY 1
+	) t
+	GROUP BY 1
+) t2
+WHERE t2.customer_id < 10;
+
+-- Another option
+WITH base_table AS (
+	SELECT DISTINCT r.customer_id, s.store_id
+		FROM rental r
+			LEFT JOIN staff s ON r.staff_id = s.staff_id
+		ORDER BY 1
+)
+
+SELECT customer_id, COUNT(*) as number_of_stores 
+FROM base_table
+GROUP BY 1;
