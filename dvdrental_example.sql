@@ -77,3 +77,49 @@ WITH base_table AS (
 SELECT customer_id, COUNT(*) as number_of_stores 
 FROM base_table
 GROUP BY 1;
+
+-- JOIN gotchas, sometimes, if using a LEFT JOIN and NULLS matter,
+-- put the filter on the JOIN itself
+SELECT zebra::date, 'zebra', p.*
+FROM generate_series('2007-02-01', '2007-02-28', INTERVAL '1 day') as zebra
+LEFT JOIN payment p ON p.payment_date::date = zebra::date AND staff_id = 2
+ORDER BY 3 NULLS FIRST;
+
+-- Chaining multiple conditions where OR is involved
+-- from rental_id > 1400 and payment hour is between 8am to Noon or 2pm to 3pm
+WITH base_table AS (
+	SELECT zebra::date, 'zebra', p.*
+	FROM generate_series('2007-02-01', '2007-02-28', INTERVAL '1 day') as zebra
+	LEFT JOIN payment p ON p.payment_date::date = zebra::date AND staff_id = 2
+	ORDER BY 3 NULLS FIRST
+)
+
+SELECT * FROM base_table bt
+WHERE bt.rental_id > 1400
+  AND (EXTRACT(HOUR FROM bt.payment_date) IN (8, 9, 10, 11, 12) OR
+	   EXTRACT(HOUR FROM bt.payment_date) IN (14))
+ORDER BY 6;
+
+-- WHERE vs. HAVING
+-- HAVING was added to SQL because WHERE could not be used for aggregation functions
+-- Return customers whose first order was on the weekend and was worth over 5
+-- and who have spent at least 100 in total
+-- Note: Sunday = 0, Saturday = 6
+SELECT p.*, EXTRACT(dow FROM p.payment_date),
+	(
+		SELECT SUM(p3.amount) FROM payment p3
+		WHERE p3.customer_id = p.customer_id
+	) as CLV 	-- CLV = Customer Lifetime Value
+FROM payment p
+WHERE p.payment_id = (
+	SELECT MIN(p2.payment_id)
+	FROM payment p2
+	WHERE p2.customer_id = p.customer_id
+)
+AND EXTRACT(dow FROM p.payment_date) IN (0, 6)
+AND p.amount > 5
+GROUP BY 1
+HAVING (
+	SELECT SUM(p3.amount) FROM payment p3
+	WHERE p3.customer_id = p.customer_id
+) > 100;
