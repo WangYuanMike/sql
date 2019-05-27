@@ -123,3 +123,115 @@ HAVING (
 	SELECT SUM(p3.amount) FROM payment p3
 	WHERE p3.customer_id = p.customer_id
 ) > 100;
+
+-- Sub query
+SELECT t.grouping, COUNT(*) FROM (
+	SELECT 'above' as grouping, f.* FROM film f
+	WHERE f.replacement_cost > (SELECT AVG(f2.replacement_cost) FROM film f2)
+		UNION
+	SELECT 'below_eq' as grouping, f.* FROM film f
+	WHERE f.replacement_cost <= (SELECT AVG(f2.replacement_cost) FROM film f2)
+) t
+GROUP BY 1;
+
+-- Unique join condition
+SELECT p.*
+FROM payment p JOIN (
+	SELECT p2.customer_id, min(p2.payment_date) as first_date
+	FROM payment p2
+	GROUP BY 1
+) t ON p.customer_id = t.customer_id AND p.payment_date = t.first_date;
+
+-- Correlated subquery
+-- Get a customer's total rental amount, 
+-- but also their total rental amount in the month of their first month
+WITH base_table AS (
+	SELECT p.customer_id, SUM(p.amount) as LTV,
+		(
+			SELECT EXTRACT(MONTH FROM MIN(p2.payment_date)) FROM payment p2
+			WHERE p2.customer_id = p.customer_id
+		) AS first_order
+	FROM payment p
+	GROUP BY 1
+)
+
+SELECT bt.*, (
+	SELECT SUM(p3.amount) FROM payment p3
+	WHERE p3.customer_id = bt.customer_id
+	AND EXTRACT(MONTH FROM p3.payment_date) = bt.first_order
+) AS rental_amt_month_1
+FROM base_table bt;
+
+-- Common table expression, Window functions
+WITH some_table AS (
+	SELECT f.film_id, f.title, f.rating, SUM(p.amount),
+		ROW_NUMBER() OVER(PARTITION BY f.rating ORDER BY SUM(p.amount) DESC)
+	FROM film f
+		JOIN inventory i ON f.film_id = i.film_id
+		JOIN rental r ON r.inventory_id = i.inventory_id
+		JOIN payment p ON p.rental_id = r.rental_id
+	GROUP BY 1, 2, 3
+	ORDER BY 3
+)
+
+SELECT st.* FROM some_table st WHERE st.row_number = 1;
+
+-- Dealing with date and time
+SELECT
+	p.payment_date::date,
+	current_date,
+	to_char(p.payment_date::date, 'YYYY/Month/DD'),
+	EXTRACT(YEAR FROM p.payment_date),
+	EXTRACT(MONTH FROM p.payment_date),
+	EXTRACT(WEEK FROM p.payment_date),
+	EXTRACT(dow FROM p.payment_date),
+	age(p.payment_date::date) as age_of_pdate,
+	-- p.payment_date - INTERVAL '7 days' as days_7_b4_pmt
+	COUNT(*)
+FROM payment p
+GROUP BY 1,2,3,4,5,6,7;
+
+-- CASE statement, Substring
+-- want to get counts of people whose last name starts with a vowel(AEIOU)
+SELECT t.my_case_outcome, COUNT(*) FROM (
+	SELECT c.*, substring(c.last_name, '^[AEIOUaeiou]') AS x,
+		CASE
+			WHEN substring(c.last_name, '^[AEIOUaeiou]') IS NOT NULL THEN 'last_starts_vow'
+			ELSE 'novowel'
+			END as my_case_outcome,
+
+		CASE
+			WHEN substring(c.last_name, '^[AEIOUaeiou]') IS NOT NULL THEN substring(c.last_name, '^[AEIOUaeiou]')
+			ELSE 'novowel'
+			END as the_letter_or_not
+	FROM customer c
+) t
+GROUP BY 1;
+    
+-- LAG function
+SELECT t.*, t.amount - t.prior_order FROM (
+	SELECT 
+		p.*, 
+		LAG(p.amount) OVER (PARTITION BY p.customer_id ORDER BY p.amount) AS prior_order 
+	FROM payment p 
+) t;
+
+-- Moving average, window function
+SELECT 
+	p.*,
+	AVG(p.amount) OVER w AS avg_over_prior7,
+	AVG(p.amount) OVER w2 AS back3_fwd_3_avg
+FROM payment p
+
+WINDOW w AS (ORDER BY p.payment_id ROWS BETWEEN 7 PRECEDING AND 0 FOLLOWING),
+	   w2 AS (ORDER BY p.payment_id ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING);
+
+-- top 10% of movies by dollar value rented
+SELECT f.film_id, f.title, SUM(p.amount) AS sales,
+	NTILE(100) OVER (ORDER BY SUM(p.amount) DESC) AS p_rank
+FROM rental r JOIN inventory i ON i.inventory_id = r.inventory_id
+			  JOIN film f ON f.film_id = i.film_id
+			  JOIN payment p ON p.rental_id = r.rental_id
+GROUP BY 1, 2
+ORDER BY 3 DESC;
+
