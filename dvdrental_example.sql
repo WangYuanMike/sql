@@ -235,3 +235,22 @@ FROM rental r JOIN inventory i ON i.inventory_id = r.inventory_id
 GROUP BY 1, 2
 ORDER BY 3 DESC;
 
+-- Get a common table expressin of all first orders
+WITH first_orders AS (
+	SELECT * FROM (
+		SELECT p.payment_id, p.amount, p.customer_id, p.payment_date, p.rental_id,
+			ROW_NUMBER() OVER (PARTITION BY p.customer_id ORDER BY p.payment_date)
+		FROM payment p
+	) t WHERE t.row_number = 1
+)
+
+SELECT t.rating, SUM(t.amount), COUNT(*) FROM (
+	SELECT fo.payment_id, fo.amount, r.*, i.*, f.*
+	FROM first_orders fo
+	JOIN rental r ON r.rental_id = fo.rental_id
+	JOIN inventory i ON i.inventory_id = r.inventory_id
+	JOIN film f ON f.film_id = i.film_id
+) t
+GROUP BY 1;
+
+
