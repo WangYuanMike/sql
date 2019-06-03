@@ -253,4 +253,67 @@ SELECT t.rating, SUM(t.amount), COUNT(*) FROM (
 ) t
 GROUP BY 1;
 
+-- Top 5 grossing actors or actresses
+WITH 
+base_table AS (
+	SELECT p.amount, r.inventory_id, f.film_id, a.actor_id,
+			a.first_name || ' ' || a.last_name AS actor_actress
+	FROM payment p
+	JOIN rental r ON r.rental_id = p.rental_id
+	JOIN inventory i ON i.inventory_id = r.inventory_id
+	JOIN film f ON f.film_id = i.film_id
+	JOIN film_actor fa ON fa.film_id = f.film_id
+	JOIN actor a ON fa.actor_id = a.actor_id
+),
+top5 AS (
+	SELECT bt.actor_actress, bt.actor_id, SUM(bt.amount)
+	FROM base_table bt GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 5
+),
+movies_top AS (
+	SELECT DISTINCT fa.film_id
+	FROM film_actor fa WHERE fa.actor_id IN (
+		SELECT t5.actor_id FROM top5 t5
+	)
+)
 
+-- SELECT * FROM top5;
+-- SELECT * FROM movies_top;
+
+-- Get all the films these actors/actresses appeared in
+-- Get all customers who have rented a movie with the top 5 grossing actors
+SELECT DISTINCT t.customer_id FROM (
+	SELECT p.amount, p.customer_id, r.inventory_id, f.film_id
+	FROM payment p
+	JOIN rental r ON r.rental_id = p.rental_id
+	JOIN inventory i ON i.inventory_id = r.inventory_id
+	JOIN film f ON f.film_id = i.film_id
+	WHERE f.film_id IN (
+		SELECT mt.film_id FROM movies_top mt
+	)
+) t;
+
+-- Get average gross revenue per actor for each film
+WITH 
+base_table AS (
+	SELECT p.amount, r.inventory_id, f.film_id, a.actor_id,
+		a.first_name || ' ' || a.last_name AS actor_actress
+	FROM payment p
+	JOIN rental r ON r.rental_id = p.rental_id
+	JOIN inventory i ON i.inventory_id = r.inventory_id
+	JOIN film f ON f.film_id = i.film_id
+	JOIN film_actor fa ON fa.film_id = f.film_id
+	JOIN actor a ON fa.actor_id = a.actor_id
+),
+second_table AS (
+	SELECT f.film_id, SUM(p.amount) AS gross_sales
+	FROM payment p
+	JOIN rental r ON r.rental_id = p.rental_id
+	JOIN inventory i ON i.inventory_id = r.inventory_id
+	JOIN film f ON f.film_id = i.film_id
+	GROUP BY 1 ORDER BY 2 DESC
+)
+
+SELECT bt.film_id, st.gross_sales, ARRAY_AGG(DISTINCT bt.actor_id) as actor_list, 
+	ARRAY_LENGTH(ARRAY_AGG(DISTINCT bt.actor_id), 1) as num_actors
+FROM base_table bt JOIN second_table st ON st.film_id = bt.film_id
+GROUP BY 1, 2
