@@ -316,4 +316,22 @@ second_table AS (
 SELECT bt.film_id, st.gross_sales, ARRAY_AGG(DISTINCT bt.actor_id) as actor_list, 
 	ARRAY_LENGTH(ARRAY_AGG(DISTINCT bt.actor_id), 1) as num_actors
 FROM base_table bt JOIN second_table st ON st.film_id = bt.film_id
-GROUP BY 1, 2
+GROUP BY 1, 2;
+
+-- Get first 7 days sales value of a customer
+WITH bt AS (
+	SELECT * FROM (
+		SELECT p.customer_id, p.payment_date, 
+			row_number() OVER(PARTITION by p.customer_id order by p.payment_date)
+		FROM payment p
+	) t WHERE t.row_number = 1
+)
+
+SELECT bt.*, (
+	SELECT SUM(p2.amount) FROM payment p2 
+	WHERE p2.customer_id = bt.customer_id
+	  AND p2.payment_date BETWEEN bt.payment_date AND bt.payment_date + INTERVAL '1 week'
+) FROM bt;
+
+
+
